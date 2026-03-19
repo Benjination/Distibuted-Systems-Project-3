@@ -346,21 +346,107 @@ All required print statement formats confirmed for Q1 and Q2.
 
 
 ----------------------------------------------------------
+STEP 15 [GIT] — Removed nested .git repos, absorbed files into root
+----------------------------------------------------------
+File: pharmacy_system/ (repository structure)
+
+Problem:
+  pharmacy_system had its own .git/ directory (and a second one inside
+  pharmacy_system/evaluation/). A directory with its own .git is treated by
+  the parent repo as a "ghost" submodule — the parent tracks only a single
+  commit pointer, never the actual file contents. Pushing the parent to
+  GitHub left pharmacy_system showing as an unclickable grey folder icon.
+
+Fix:
+  rm -rf pharmacy_system/.git
+  rm -rf pharmacy_system/evaluation/.git
+  git rm --cached pharmacy_system          # clear old submodule pointer
+  git rm --cached -f pharmacy_system/evaluation
+  git add pharmacy_system/
+  git commit -m "Fix nested repos: track pharmacy_system files directly"
+  git push origin main
+
+Result:
+  All 33 pharmacy_system files are now tracked and visible on GitHub.
+
+
+----------------------------------------------------------
+STEP 16 [NEW] — Created LaTeX report scaffold
+----------------------------------------------------------
+Directory: /Project3/LaTex/report/
+
+Created a compilable LaTeX report covering all assignment questions.
+Structure:
+  main.tex               — title page, TOC, \input{} directives
+  sections/overview.tex  — architecture table and port map
+  sections/q1.tex        — vote phase design + screenshot placeholder
+  sections/q2.tex        — commit/abort paths + 2 screenshot placeholders
+  sections/q3.tex        — Raft election design skeleton
+  sections/q4.tex        — Raft log replication design skeleton
+  sections/q5.tex        — 5 failure test cases + screenshot placeholders
+  sections/work_split.tex — task ownership table
+  sections/ai_usage.tex  — AI tool disclosure
+  images/                — directory for screenshots (see .gitkeep)
+
+To compile:
+  pdflatex main.tex  (run twice for TOC/hyperref)
+
+Before submission, fill in macros at top of main.tex:
+  \StudentA, \StudentAID, \StudentB, \StudentBID, \GithubLink
+
+
+----------------------------------------------------------
+STEP 17 [VERIFIED] — Screenshots captured for Q1 and Q2 figures
+----------------------------------------------------------
+Captured by running twopc_client.py and extracting from docker logs.
+
+Figure 1 (q1_vote_phase.png):
+  docker logs node2-api-server-a 2>&1 | \
+    sed -n '/Transaction 0C1E9EE8/,/Vote phase complete/p'
+  Shows: 5 VoteRequest RPCs sent, all nodes reply VoteCommit.
+
+Figure 2 (q2_commit.png):
+  docker logs node2-api-server-a 2>&1 | \
+    sed -n '/Transaction 0C1E9EE8/,/Decision phase complete/p' | head -40
+  Shows: full commit path — GlobalCommit delivered, Node 1 applies DB UPDATE,
+  5/5 ACKs received.
+
+Figure 3 (q2_abort.png):
+  docker logs node2-api-server-a 2>&1 | \
+    sed -n '/Transaction EB649F2F/,/Decision phase complete/p' | head -40
+  Shows: full abort path — all 5 nodes vote ABORT (drug 9999 not found),
+  GlobalAbort delivered, 5/5 ACKs received.
+
+
+----------------------------------------------------------
 PENDING — NEXT STEPS
 ----------------------------------------------------------
 
-[ ] Q3 — Create raft.proto with RequestVote and AppendEntries RPCs.
+[x] Q1 — Vote phase: implemented, tested, screenshots captured.
+[x] Q2 — Decision phase: implemented, tested, screenshots captured.
+[x] Report scaffold: all section files created, compiles cleanly.
 
-[ ] Q3 — Create raft_node.py with Follower/Candidate/Leader state machine,
-          1s heartbeat timeout, random 1.5–3s election timeout.
+[ ] Q3 — Create proto/raft.proto with RequestVote and AppendEntries RPCs.
 
-[ ] Q4 — Extend AppendEntries to carry log entries.
-          Implement client-to-leader forwarding.
-          Implement majority-ACK commit and log execution.
+[ ] Q3 — Create node2_api_server/raft_node.py:
+          - States: Follower / Candidate / Leader
+          - Election timeout: random 1.5–3s (reset on heartbeat)
+          - Heartbeat interval: 1s (leader only)
+          - Vote logic: grant if term >= current AND not yet voted this term
+          - Print format: "Node X sends RPC Y to Node Z" / "Node X runs RPC Y called by Node Z"
 
-[ ] Q5 — Design and run 5 failure test cases. Capture screenshots.
+[ ] Q3 — Wire raft_node.py into server.py; rebuild containers; capture election screenshot.
 
-[ ] Final — Update README, write report.
+[ ] Q4 — Extend AppendEntries in raft.proto to carry LogEntry messages.
+          Implement leader log append, majority-ACK commit, DB write.
+          Implement follower-to-leader request forwarding.
+
+[ ] Q5 — Run 5 failure scenarios, capture screenshots, replace report placeholders.
+          Test cases defined in report/sections/q5.tex.
+
+[ ] Final — Fill in \StudentA/B/ID/GithubLink macros in main.tex.
+             Update README.md with full architecture and usage instructions.
+             Compile final PDF and verify all figures render.
 
 ----------------------------------------------------------
 END OF LOG

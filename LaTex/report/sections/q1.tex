@@ -12,6 +12,7 @@ every participant — including itself on \texttt{localhost:50052}, satisfying
 the requirement that intra-node communication between the voting and decision
 phases occurs over gRPC.
 
+\newpage
 \subsection*{Proto Definition}
 
 \begin{lstlisting}[language={}]
@@ -58,11 +59,7 @@ Phase voting of Node 2 sends RPC VoteCommit to Phase decision of Node 1
 
 \begin{figure}[H]
   \centering
-  % \includegraphics[width=0.95\textwidth]{images/q1_vote_phase.png}
-  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
-    [Screenshot: \texttt{docker logs node2-api-server-a} showing VoteRequest
-    and VoteCommit prints for all 5 nodes]
-  \vspace{2.2cm}}}
+  \includegraphics[width=0.95\textwidth]{images/VotePhase.png}
   \caption{Vote phase print output from the coordinator node (Node 1).}
   \label{fig:q1}
 \end{figure}

@@ -41,11 +41,7 @@ Phase voting of Node 2 sends RPC GlobalAbortAck to Phase decision of Node 1
 
 \begin{figure}[H]
   \centering
-  % \includegraphics[width=0.95\textwidth]{images/q2_commit.png}
-  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
-    [Screenshot: full commit-path output — VoteCommit $\times$5, GlobalCommit $\times$5,
-    ``5/5 ACKs received'', client prints \texttt{success=True}]
-  \vspace{2.2cm}}}
+  \includegraphics[width=0.95\textwidth]{images/CommitVote.png}
   \caption{2PC commit path: all 5 nodes vote COMMIT, global commit delivered, DB updated.}
   \label{fig:q2_commit}
 \end{figure}
@@ -54,11 +50,7 @@ Phase voting of Node 2 sends RPC GlobalAbortAck to Phase decision of Node 1
 
 \begin{figure}[H]
   \centering
-  % \includegraphics[width=0.95\textwidth]{images/q2_abort.png}
-  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
-    [Screenshot: abort-path output — VoteAbort $\times$5 (drug 9999 not found),
-    GlobalAbort $\times$5, client prints \texttt{success=False}]
-  \vspace{2.2cm}}}
+  \includegraphics[width=0.95\textwidth]{images/AbortVote.png}
   \caption{2PC abort path: all 5 nodes vote ABORT because drug\_id 9999 does not exist.}
   \label{fig:q2_abort}
 \end{figure}

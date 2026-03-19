@@ -71,10 +71,9 @@ Extend `raft_node.py` (no new files needed):
 
 ## Role B — Testing, Client Code & Report (Q4 support + Q5)
 
-Everything in this role can be written and completed **without waiting** on
-Role A, because it is either client-side code, test scripts, or documentation.
-When Role A signals that Raft is running, Role B plugs in the captured output
-and the work is done.
+Most of this role can be completed independently and in parallel with Role A.
+The only dependency is waiting for the Raft server to be running before
+capturing final output and screenshots. Everything else is fully writable now.
 
 **Files owned:**
 - `client/raft_test_client.py` (new file)
@@ -82,10 +81,10 @@ and the work is done.
 - `README.md`
 - Final report document
 
-### Write `raft_test_client.py` (do this now)
+### Write `raft_test_client.py`
 
-This client will be used to test Q3 and Q4 once Role A's Raft is running.
-Write it now — it is pure client code and does not require a Raft server.
+This client will be used to test Q3 and Q4 once Raft is running.
+It is pure client-side code and does not require a Raft server to write.
 
 ```
 Connect to any node (e.g. localhost:50051 via NGINX load balancer)
@@ -95,7 +94,7 @@ Print which node handled it and whether it was forwarded to a leader
 
 Structure it so it can be pointed at any of the 5 nodes to test forwarding.
 
-### Write `q5_failure_tests.py` (do this now)
+### Write `q5_failure_tests.py`
 
 Script all 5 failure scenarios. Each test should:
 1. Print what it is about to do
@@ -114,7 +113,7 @@ Suggested 5 scenarios:
 These can be written as Python scripts using `subprocess` to call `docker stop/start`,
 without Raft needing to be running yet.
 
-### Update `README.md` (do this now)
+### Update `README.md`
 
 Document the full project:
 - Architecture overview (5 API nodes, NGINX, PostgreSQL primary/replica)
@@ -124,7 +123,7 @@ Document the full project:
 - 2PC design summary (coordinator on Node 1, participants on all 5)
 - Raft design summary (from `raft.proto` and the proto comments — no running code needed)
 
-### Write the report (start now, finish after sync)
+### Write the report (start any time, finish after sync)
 
 - **Q1 + Q2 sections**: fully writable now. All output is captured.
   Use the print statements from `docker logs node2-api-server-a` as evidence.
