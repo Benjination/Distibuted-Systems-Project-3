@@ -1,0 +1,64 @@
+\section{Q2 — Two-Phase Commit: Decision Phase}
+
+\subsection*{Design}
+
+After collecting all votes, the coordinator sends either \texttt{GlobalCommit}
+or \texttt{GlobalAbort} to all 5 participants. Both RPCs belong to the same
+\texttt{TwoPhaseParticipantService} defined in Q1, fulfilling the requirement
+that both phases share a single proto file.
+
+The \texttt{CoordinatorService} is exposed on port \texttt{50053} on Node 1 only.
+A client calls \texttt{UpdateStock2PC} which triggers the full Q1 + Q2 protocol.
+
+\subsection*{Decision Logic}
+
+\begin{itemize}
+  \item \textbf{All voted COMMIT} $\Rightarrow$ coordinator sends \texttt{GlobalCommit} to all 5 nodes.
+        Node 1 (coordinator node) executes the actual \texttt{UPDATE drugs SET quantity = ...}
+        SQL write. The other 4 nodes log a local commit without touching the database,
+        since all nodes share a single PostgreSQL primary instance.
+  \item \textbf{Any voted ABORT} $\Rightarrow$ coordinator sends \texttt{GlobalAbort} to all 5 nodes.
+        Each participant discards the pending transaction. No database write occurs.
+\end{itemize}
+
+\subsection*{Required Print Output — Commit Path}
+
+\begin{lstlisting}[language={}]
+Phase decision of Node 1 sends RPC GlobalCommit to Phase voting of Node 2
+Phase voting of Node 2 receives RPC GlobalCommit from Phase decision of Node 1
+Phase voting of Node 2 sends RPC GlobalCommitAck to Phase decision of Node 1
+\end{lstlisting}
+
+\subsection*{Required Print Output — Abort Path}
+
+\begin{lstlisting}[language={}]
+Phase decision of Node 1 sends RPC GlobalAbort to Phase voting of Node 2
+Phase voting of Node 2 receives RPC GlobalAbort from Phase decision of Node 1
+Phase voting of Node 2 sends RPC GlobalAbortAck to Phase decision of Node 1
+\end{lstlisting}
+
+\subsection*{Screenshot — Commit Path (Happy Path)}
+
+\begin{figure}[H]
+  \centering
+  % \includegraphics[width=0.95\textwidth]{images/q2_commit.png}
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
+    [Screenshot: full commit-path output — VoteCommit $\times$5, GlobalCommit $\times$5,
+    ``5/5 ACKs received'', client prints \texttt{success=True}]
+  \vspace{2.2cm}}}
+  \caption{2PC commit path: all 5 nodes vote COMMIT, global commit delivered, DB updated.}
+  \label{fig:q2_commit}
+\end{figure}
+
+\subsection*{Screenshot — Abort Path}
+
+\begin{figure}[H]
+  \centering
+  % \includegraphics[width=0.95\textwidth]{images/q2_abort.png}
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
+    [Screenshot: abort-path output — VoteAbort $\times$5 (drug 9999 not found),
+    GlobalAbort $\times$5, client prints \texttt{success=False}]
+  \vspace{2.2cm}}}
+  \caption{2PC abort path: all 5 nodes vote ABORT because drug\_id 9999 does not exist.}
+  \label{fig:q2_abort}
+\end{figure}

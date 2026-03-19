@@ -1,0 +1,117 @@
+\section{Q5 — Raft Failure Test Cases}
+
+Five failure scenarios are scripted in \texttt{client/q5\_failure\_tests.py}.
+Each test stops or disrupts one or more containers, observes system behavior,
+then restores normal operation.
+
+% ── Test Case 1 ──────────────────────────────────────────
+\subsection*{Test Case 1 — Leader Crash}
+
+\textbf{Setup:} Identify the current leader from logs, then stop that container.
+
+\textbf{Expected behavior:} The remaining 4 nodes stop receiving heartbeats.
+After their election timeouts expire (1.5–3s), one node initiates an election
+and a new leader is elected. Operations resume once a new leader is established.
+
+\textbf{Commands:}
+\begin{lstlisting}[language=bash]
+docker stop node2-api-server-a   # (or whichever node is leader)
+# observe re-election in remaining nodes
+docker start node2-api-server-a
+\end{lstlisting}
+
+\begin{figure}[H]
+  \centering
+  % \includegraphics[width=0.95\textwidth]{images/q5_test1_leader_crash.png}
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
+    [Screenshot: leader node stopped, election timeout fires on another node,
+    new leader elected, heartbeats resume from new leader]
+  \vspace{2.2cm}}}
+  \caption{Test 1: Leader crash triggers re-election among the remaining 4 nodes.}
+  \label{fig:q5_t1}
+\end{figure}
+
+% ── Test Case 2 ──────────────────────────────────────────
+\subsection*{Test Case 2 — Single Follower Crash}
+
+\textbf{Setup:} Stop one follower while the system is operational.
+
+\textbf{Expected behavior:} The cluster retains a majority (4 of 5 nodes).
+Log replication continues; the leader commits operations with ACKs from the
+remaining 4 followers. The stopped node re-syncs its log when restarted.
+
+\begin{figure}[H]
+  \centering
+  % \includegraphics[width=0.95\textwidth]{images/q5_test2_follower_crash.png}
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
+    [Screenshot: one follower stopped, client operation still succeeds,
+    log replication prints show only 4 ACKs, majority still met]
+  \vspace{2.2cm}}}
+  \caption{Test 2: Single follower crash — majority intact, operations continue.}
+  \label{fig:q5_t2}
+\end{figure}
+
+% ── Test Case 3 ──────────────────────────────────────────
+\subsection*{Test Case 3 — Two Followers Crash (Majority Retained)}
+
+\textbf{Setup:} Stop two follower nodes simultaneously.
+
+\textbf{Expected behavior:} 3 of 5 nodes remain — exactly a majority.
+The leader can still reach consensus and commit operations. This is the
+minimum viable cluster for the 5-node configuration.
+
+\begin{figure}[H]
+  \centering
+  % \includegraphics[width=0.95\textwidth]{images/q5_test3_two_followers.png}
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
+    [Screenshot: two followers stopped, client operation succeeds, leader commits
+    after receiving 3/5 ACKs (leader + 2 remaining followers)]
+  \vspace{2.2cm}}}
+  \caption{Test 3: Two followers crash — 3-node majority still allows commits.}
+  \label{fig:q5_t3}
+\end{figure}
+
+% ── Test Case 4 ──────────────────────────────────────────
+\subsection*{Test Case 4 — Majority Lost (System Stalls)}
+
+\textbf{Setup:} Stop three nodes, breaking the majority threshold.
+
+\textbf{Expected behavior:} The remaining 2 nodes cannot form a majority.
+If the leader is among the 2 survivors, it will not commit any new operations
+(cannot reach 3 ACKs). If a candidate election fires, it also cannot win.
+The system stalls until nodes are restored.
+
+\begin{figure}[H]
+  \centering
+  % \includegraphics[width=0.95\textwidth]{images/q5_test4_no_majority.png}
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
+    [Screenshot: 3 nodes stopped, client request times out or hangs,
+    logs show leader cannot gather majority ACKs, no commit occurs;
+    nodes restored and normal operation resumes]
+  \vspace{2.2cm}}}
+  \caption{Test 4: Three nodes stopped — majority lost, system stalls until restored.}
+  \label{fig:q5_t4}
+\end{figure}
+
+% ── Test Case 5 ──────────────────────────────────────────
+\subsection*{Test Case 5 — 2PC with Participant Down}
+
+\textbf{Setup:} Stop one API server, then trigger a \texttt{UpdateStock2PC}
+transaction via \texttt{twopc\_client.py}.
+
+\textbf{Expected behavior:} The coordinator sends \texttt{VoteRequest} to all
+5 participants. The stopped node is unreachable; the coordinator treats an
+unreachable node as an implicit \texttt{VoteAbort}. \texttt{GlobalAbort} is
+sent to all reachable participants and the transaction is rolled back.
+
+\begin{figure}[H]
+  \centering
+  % \includegraphics[width=0.95\textwidth]{images/q5_test5_2pc_participant_down.png}
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
+    [Screenshot: one participant container stopped, coordinator logs show
+    unreachable node treated as ABORT vote, GlobalAbort broadcast, client
+    receives \texttt{success=False}]
+  \vspace{2.2cm}}}
+  \caption{Test 5: 2PC transaction aborts when one participant is unreachable.}
+  \label{fig:q5_t5}
+\end{figure}

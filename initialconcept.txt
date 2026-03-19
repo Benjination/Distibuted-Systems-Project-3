@@ -1,0 +1,218 @@
+========================================================
+  PROJECT 3 — INITIAL CONCEPT ANALYSIS
+  Assignment: 2PC + Raft on Three Selected Implementations
+========================================================
+
+----------------------------------------------------------
+SECTION 1: THE THREE PROJECTS
+----------------------------------------------------------
+
+PROJECT A — CSE5306 (Polyglot gRPC Ping)
+  Language:     Python + Go (cross-language)
+  Architecture: 4 Docker containers — python-server, python-client, go-server, go-client
+  Services:
+    - PingService: Ping(PingRequest) → PingReply
+      (Returns server language, message, RFC3339 timestamp)
+  Summary: A minimal single-RPC service proving cross-language gRPC works.
+           No business logic or persistence. Nodes communicate over a shared Docker network.
+
+PROJECT B — pharmacy_system (Distributed Pharmacy Inventory)
+  Language:     Python (gRPC server + client), PostgreSQL
+  Architecture: 8 Docker containers
+    - node1: NGINX Load Balancer         (port 8080)
+    - node2: gRPC API Server A           (port 50051)
+    - node3: gRPC API Server B           (port 50051)
+    - node4: PostgreSQL Primary DB       (port 5432)
+    - node5: PostgreSQL Replica DB       (port 5433)
+    - node6: pgAdmin                     (port 5050)
+    - monolith-rest-api / mono-db        (comparison)
+  Services (PharmacyService):
+    - AddDrug        — create a drug record
+    - GetDrug        — retrieve by ID
+    - UpdateStock    — modify quantity
+    - DeleteDrug     — remove a record
+    - ListDrugs      — retrieve all
+    - GetLowStock    — threshold-based alert query
+  Summary: Real CRUD business logic with load balancing and DB replication already built in.
+           Two parallel API servers + two DB nodes = natural multi-participant topology.
+
+PROJECT C — UTA-Marketplace (Distributed Campus Marketplace)
+  Language:     Node.js / TypeScript (all microservices + gateway), React frontend
+  Architecture: 10 Docker containers (microservices mode)
+    - Frontend            (port 3000)
+    - API Gateway         (port 8080, REST → gRPC translation)
+    - AuthService         (port 50051) — JWT login/register/validate/refresh
+    - ListingService      (port 50052) — full CRUD for marketplace listings
+    - SearchService       (port 50053) — full-text search + category/condition metadata
+    - UserService         (port 50054) — profile get/update
+    - MessagingService    (port 50055) — seller contact info + contact history
+    - AnalyticsService    (port 50056) — view tracking, trending, recommendations
+    - FavoritesService    (port 50057) — add/remove/list user favorites
+    - PostgreSQL          (port 5432)
+  Summary: A fully realized microservices platform with 7 independent gRPC services and
+           a REST gateway. Rich domain logic with auth, search, analytics, and messaging.
+
+
+----------------------------------------------------------
+SECTION 2: OVERLAPPING / DUPLICATABLE MICROSERVICES
+----------------------------------------------------------
+
+The following service patterns appear in TWO or more projects, making them candidates
+for code sharing, parallel implementation, or extending with 2PC/Raft.
+
+1. CORE CRUD SERVICE (Entity Management)
+   - pharmacy_system  → PharmacyService  (drugs: id, name, quantity, price, expiry, category)
+   - UTA-Marketplace  → ListingService   (listings: id, title, price, category, condition, seller)
+   Both implement the identical CRUD pattern: Create / Get / Update / Delete / List.
+   Both persist to PostgreSQL. Both use proto3 with a boolean success + message response envelope.
+   The UpdateStock / UpdateListing RPCs are structurally near-identical.
+
+2. REQUEST ROUTING / ENTRY-POINT NODE
+   - pharmacy_system  → NGINX Load Balancer (layer-4, round-robins to two API servers)
+   - UTA-Marketplace  → API Gateway (Express.js, translates REST to gRPC, token validation)
+   Both play the "coordinator" role in the request path. Critically for 2PC, the coordinator
+   node is already architecturally present in both projects without needing to be added.
+
+3. HEALTH / CONNECTIVITY CHECK
+   - CSE5306          → PingService (explicit single-purpose health-ping RPC)
+   - pharmacy_system  → implicit (NGINX upstream health check, pgAdmin)
+   - UTA-Marketplace  → implicit (gateway checks service availability)
+   A health/heartbeat pattern exists across all three. This maps naturally onto Raft's
+   AppendEntries heartbeat mechanism.
+
+4. REPLICATED DATA STORE
+   - pharmacy_system  → PostgreSQL Primary → Replica (streaming replication, nodes 4 & 5)
+   - UTA-Marketplace  → Single shared PostgreSQL (no explicit read replication)
+   Only pharmacy has built-in DB replication, making it the richest starting point for
+   demonstrating why a consensus protocol like Raft is needed.
+
+5. MULTI-NODE STATEFUL CLUSTER
+   - pharmacy_system  → 2 API servers + 2 DB nodes (4 stateful nodes, already live)
+   - UTA-Marketplace  → 7 gRPC microservices (each is a potential Raft participant)
+   - CSE5306          → 2 servers (easily scaled to 5 identical containers)
+   All three can reach the minimum 5-node requirement, but pharmacy and CSE5306 require
+   the least refactoring to achieve it.
+
+
+----------------------------------------------------------
+SECTION 3: CANDIDATE MICROSERVICES FOR 2PC (Q1 & Q2)
+----------------------------------------------------------
+
+OPTION A — pharmacy_system → UpdateStock (RECOMMENDED)
+  Why it fits:
+    - UpdateStock modifies a shared mutable integer (quantity). This is the canonical
+      2PC use case: a stock deduction must be atomic across all participants or not at all.
+    - The two API servers (node2, node3) are natural participants. The NGINX node can act
+      as coordinator, or a new dedicated coordinator container can be added.
+    - With nodes nginx + api-a + api-b + db-primary + db-replica = 5 nodes already running.
+    - Python gRPC is clean and concise for adding VoteRequest/VoteCommit/GlobalCommit RPCs.
+    - The consistency problem is obvious and easy to explain: if server A deducts stock but
+      server B crashes before mirroring the change, inventory diverges. 2PC prevents this.
+  Straightforwardness: HIGH — small proto extension, clear coordinator/participant roles.
+  Interest level:    HIGH — real-world consequence (overselling inventory) makes 2PC meaningful.
+
+OPTION B — UTA-Marketplace → CreateListing (across AuthService + ListingService)
+  Why it fits:
+    - Creating a listing requires token validation (AuthService) AND writing the record
+      (ListingService). These are two separate gRPC services, making the Gateway a natural
+      coordinator: "vote-request" to both, only proceed if both commit.
+    - Demonstrates 2PC across heterogeneous services (auth vs. data), not just replicas.
+  Straightforwardness: MEDIUM — requires understanding two separate service codebases in TS.
+  Interest level:    HIGH — cross-service atomic consistency is a realistic microservices problem.
+
+OPTION C — CSE5306 → Ping extended to multi-node write
+  Why it fits:
+    - Scale the ping service to 5 identical containers. One becomes coordinator, others
+      become participants. Replace the PingRequest payload with a "write operation" payload.
+  Straightforwardness: HIGH — simplest possible service to extend.
+  Interest level:    LOW — artificial; no real business consequence to the transaction.
+
+BEST CHOICE FOR 2PC: pharmacy_system → UpdateStock
+  The combination of an already-running 5-node topology, a clear real-world correctness
+  requirement (inventory consistency), and a simple Python codebase makes this the optimal
+  choice for implementing both the voting phase (Q1) and decision phase (Q2).
+
+
+----------------------------------------------------------
+SECTION 4: CANDIDATE MICROSERVICES FOR RAFT (Q3 & Q4)
+----------------------------------------------------------
+
+OPTION A — pharmacy_system → API Server cluster (RECOMMENDED)
+  Why it fits:
+    - Nodes: api-server-a and api-server-b are identical Python processes — perfect Raft peers.
+      Add 3 more identical API server containers (api-server-c, d, e) to reach the required 5.
+    - Leader election maps to: which API server is the write-master? All drug write operations
+      (AddDrug, UpdateStock, DeleteDrug) go through the elected leader. Followers forward to it.
+    - Log replication maps to: the ordered list of drug operations. When leader receives AddDrug,
+      it appends to log and replicates to all followers before committing.
+    - The Q4 requirement ("receiver forwards request to the leader") is naturally satisfied
+      since any API server can receive a client request and forward it.
+    - Python is concise for implementing the Raft state machine (Follower/Candidate/Leader).
+    - The 1s heartbeat and 1.5–3s election timeout are trivially set in asyncio or threading.
+  Straightforwardness: HIGH — homogeneous nodes, clear state machine, simple data model.
+  Interest level:    HIGH — Raft on an inventory system directly prevents split-brain
+                           (two leaders both accepting writes = inconsistent drug counts).
+
+OPTION B — CSE5306 → Ping extended to 5 ping-server nodes
+  Why it fits:
+    - Raft leader election can be layered on top of 5 identical ping containers.
+    - Each node just needs election/heartbeat logic; the "log" can be a list of ping names.
+    - Easiest possible starting point: minimal existing code to modify.
+  Straightforwardness: VERY HIGH — zero business logic complexity.
+  Interest level:    LOW — no meaningful replicated state. The log contains only "ping" ops.
+
+OPTION C — UTA-Marketplace → Multiple ListingService instances
+  Why it fits:
+    - Spin up 5 instances of ListingService. Raft elects one as leader to accept CreateListing
+      and UpdateListing writes. Followers replicate the listing log.
+    - Node.js / TypeScript is expressive for async state machine code.
+    - Rich log content: each log entry is a full CreateListing or UpdateListing operation.
+  Straightforwardness: MEDIUM — Node.js async patterns add complexity; service has more
+                                dependencies (requires DB connection for each instance).
+  Interest level:    HIGH — marketplace listings are a compelling real-world Raft use case.
+
+BEST CHOICE FOR RAFT: pharmacy_system → API Server cluster (5 instances)
+  Homogeneous Python nodes, simple data model, and a clear real-world reason for consensus
+  (avoid split-brain on drug inventory) make this the cleanest Raft implementation target.
+  The existing Dockerfile for node2_api_server can be reused for all 5 Raft nodes with
+  only environment variable differences. Q4's client-forwarding-to-leader requirement is
+  straightforward to add since all nodes already share the same gRPC interface.
+
+
+----------------------------------------------------------
+SECTION 5: FINAL RECOMMENDATIONS SUMMARY
+----------------------------------------------------------
+
+ASSIGNMENT PART        | CHOSEN PROJECT      | CHOSEN SERVICE / OPERATION
+-----------------------+---------------------+----------------------------------
+Q1 — 2PC Vote Phase    | pharmacy_system     | UpdateStock across api-a + api-b
+Q2 — 2PC Decision Phase| pharmacy_system     | UpdateStock (same as Q1)
+Q3 — Raft Election     | pharmacy_system     | 5x API Server nodes
+Q4 — Raft Log Repl.    | pharmacy_system     | Drug operation log (Add/Update/Delete)
+Q5 — Failure Test Cases| pharmacy_system     | Raft cluster of 5 API servers
+
+Using pharmacy_system for both Q1–Q2 (2PC) and Q3–Q5 (Raft) on the same base project
+is the most practical strategy because:
+
+  1. Single codebase to understand — all Python, all gRPC, all PostgreSQL.
+  2. 2PC and Raft operate on different scopes: 2PC coordinates a single cross-replica
+     write transaction; Raft governs which node may accept writes overall. They can
+     coexist: Raft elects the leader, and the leader runs 2PC for each write.
+  3. Minimum 5 nodes satisfied naturally: 5 Python API server containers share one
+     Dockerfile, differentiated only by NODE_ID environment variable.
+  4. The existing pharmacy.proto is already well-defined — extending it with
+     VoteRequest, VoteCommit, GlobalCommit (2PC) and RequestVote, AppendEntries (Raft)
+     messages keeps all distributed protocol logic in one proto file per the assignment.
+  5. Python asyncio makes implementing concurrent heartbeat timers and election
+     timeouts in the [1.5s, 3s] range simple and readable.
+
+SECONDARY OPTION (if a second project must handle one of Q1-Q4):
+  Use UTA-Marketplace's CreateListing + AuthService for 2PC to demonstrate
+  cross-heterogeneous-service coordination, providing a contrast to the
+  homogeneous-replica 2PC in pharmacy_system. This would be the most
+  academically interesting variation since it shows 2PC between services
+  with completely different roles rather than duplicate replicas.
+
+----------------------------------------------------------
+END OF INITIAL CONCEPT
+----------------------------------------------------------

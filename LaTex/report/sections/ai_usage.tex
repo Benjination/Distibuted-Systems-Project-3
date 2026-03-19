@@ -1,0 +1,19 @@
+\section{AI Usage}
+
+GitHub Copilot (Claude Sonnet 4.6) was used as a programming assistant
+throughout this project. Its usage included:
+
+\begin{itemize}
+  \item Scaffolding the initial proto file extensions for 2PC and Raft service definitions.
+  \item Generating boilerplate for the gRPC servicer classes (\texttt{participant.py},
+        \texttt{coordinator.py}) which were then reviewed, understood, and adapted.
+  \item Diagnosing a runtime bug where the \texttt{CoordinatorService} gRPC server
+        object was garbage-collected immediately after creation because its return
+        value was not assigned to a variable.
+  \item Suggesting the \texttt{PYTHONUNBUFFERED=1} Dockerfile fix to ensure
+        Python \texttt{print()} output was captured by \texttt{docker logs}.
+  \item Drafting this report structure.
+\end{itemize}
+
+All generated code was reviewed for correctness and the underlying distributed
+systems concepts were understood by both team members before submission.

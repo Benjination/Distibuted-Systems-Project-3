@@ -1,0 +1,36 @@
+\section{Project Overview}
+
+This project extends the \textbf{pharmacy\_system} distributed inventory system
+(originally developed for Project 2) with two distributed coordination protocols:
+Two-Phase Commit (2PC) for atomic stock updates, and a simplified version of the
+Raft consensus algorithm for leader election and log replication.
+
+The base system is a gRPC-based pharmacy inventory service backed by a PostgreSQL
+database. For this project it was scaled from 2 to \textbf{5 API server nodes},
+all communicating over a shared Docker bridge network (\texttt{pharmacy-net}).
+
+\subsection*{Architecture Summary}
+
+\begin{center}
+\begin{tabular}{lll}
+  \toprule
+  Component & Container & Port \\
+  \midrule
+  NGINX Load Balancer      & node1-nginx-lb       & 8080 \\
+  API Server A (Node 1)    & node2-api-server-a   & 50051 / 50052 / 50053 \\
+  API Server B (Node 2)    & node3-api-server-b   & 50051 / 50052 \\
+  API Server C (Node 3)    & node7-api-server-c   & 50051 / 50052 \\
+  API Server D (Node 4)    & node8-api-server-d   & 50051 / 50052 \\
+  API Server E (Node 5)    & node9-api-server-e   & 50051 / 50052 \\
+  PostgreSQL Primary       & node4-db-primary     & 5432 \\
+  PostgreSQL Replica       & node5-db-replica     & 5433 \\
+  \bottomrule
+\end{tabular}
+\end{center}
+
+\textbf{Port assignment:}
+\begin{itemize}
+  \item \texttt{50051} — original \texttt{PharmacyService} (all nodes)
+  \item \texttt{50052} — \texttt{TwoPhaseParticipantService} (all nodes, internal only)
+  \item \texttt{50053} — \texttt{CoordinatorService} (Node 1 only, exposed to host)
+\end{itemize}

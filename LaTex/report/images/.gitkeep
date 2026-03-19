@@ -1,0 +1,17 @@
+# Drop your screenshots in this directory.
+#
+# Expected filenames (match the \includegraphics paths in each section):
+#   q1_vote_phase.png
+#   q2_commit.png
+#   q2_abort.png
+#   q3_election.png
+#   q4_replication.png
+#   q5_test1.png  (leader crash)
+#   q5_test2.png  (single follower crash)
+#   q5_test3.png  (two followers crash)
+#   q5_test4.png  (majority lost)
+#   q5_test5.png  (2PC participant down)
+#
+# To activate a screenshot in the .tex file:
+#   1. Un-comment the \includegraphics line
+#   2. Delete the \fbox{...placeholder...} block above it

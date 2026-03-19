@@ -1,0 +1,83 @@
+\documentclass[12pt,letterpaper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{float}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{booktabs}
+\usepackage{parskip}
+\usepackage{titlesec}
+
+% Code listing style
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  backgroundcolor=\color{gray!8},
+  keywordstyle=\color{blue},
+  commentstyle=\color{green!50!black},
+  stringstyle=\color{orange!80!black},
+}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  urlcolor=blue,
+  citecolor=black
+}
+
+\titleformat{\section}{\large\bfseries}{}{0em}{}[\titlerule]
+\titleformat{\subsection}{\normalsize\bfseries}{}{0em}{}
+
+% ─────────────────────────────────────────────
+%  Fill in before submission
+% ─────────────────────────────────────────────
+\newcommand{\StudentA}{[Your Name]}
+\newcommand{\StudentAID}{[Your Student ID]}
+\newcommand{\StudentB}{[Partner Name]}
+\newcommand{\StudentBID}{[Partner Student ID]}
+\newcommand{\GithubLink}{https://github.com/[your-repo]}
+% ─────────────────────────────────────────────
+
+\begin{document}
+
+% ── Title Page ───────────────────────────────
+\begin{center}
+  {\LARGE \textbf{CSE 5306 — Project 3}}\\[6pt]
+  {\large Two-Phase Commit and Raft Consensus}\\[14pt]
+  \begin{tabular}{ll}
+    \StudentA  & \StudentAID \\
+    \StudentB  & \StudentBID \\
+  \end{tabular}\\[8pt]
+  \textbf{GitHub:} \href{\GithubLink}{\GithubLink}\\[4pt]
+  \today
+\end{center}
+
+\vspace{0.5cm}
+\hrule
+\vspace{0.5cm}
+
+% ── Table of Contents ────────────────────────
+\tableofcontents
+\newpage
+
+% ── Sections ─────────────────────────────────
+\input{sections/overview}
+
+\input{sections/q1}
+
+\input{sections/q2}
+
+\input{sections/q3}
+
+\input{sections/q4}
+
+\input{sections/q5}
+
+\input{sections/work_split}
+
+\input{sections/ai_usage}
+
+\end{document}

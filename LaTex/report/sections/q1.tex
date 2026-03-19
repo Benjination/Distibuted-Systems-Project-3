@@ -1,0 +1,68 @@
+\section{Q1 — Two-Phase Commit: Vote Phase}
+
+\subsection*{Design}
+
+The vote phase is implemented as a separate gRPC service,
+\texttt{TwoPhaseParticipantService}, defined in \texttt{proto/pharmacy.proto}.
+It runs on \textbf{all 5 nodes} on port \texttt{50052}.
+
+The coordinator (Node 1) drives the protocol. For each \texttt{UpdateStock2PC}
+call it generates a unique transaction ID and sends a \texttt{VoteRequest} to
+every participant — including itself on \texttt{localhost:50052}, satisfying
+the requirement that intra-node communication between the voting and decision
+phases occurs over gRPC.
+
+\subsection*{Proto Definition}
+
+\begin{lstlisting}[language={}]
+service TwoPhaseParticipantService {
+  rpc VoteRequest(VoteRequestMsg)  returns (VoteResponseMsg);
+  rpc GlobalCommit(GlobalDecisionMsg) returns (GlobalDecisionAck);
+  rpc GlobalAbort(GlobalDecisionMsg)  returns (GlobalDecisionAck);
+}
+
+message VoteRequestMsg {
+  string transaction_id = 1;
+  int32  drug_id        = 2;
+  int32  new_quantity   = 3;
+  int32  coordinator_id = 4;
+}
+
+message VoteResponseMsg {
+  string transaction_id = 1;
+  int32  participant_id = 2;
+  bool   vote_commit    = 3;
+  string reason         = 4;
+}
+\end{lstlisting}
+
+\subsection*{Participant Logic}
+
+Each participant's \texttt{VoteRequest} handler:
+\begin{enumerate}
+  \item Queries PostgreSQL to check whether \texttt{drug\_id} exists.
+  \item If found: stores the pending transaction in an in-memory dictionary
+        (protected by a \texttt{threading.Lock}) and replies \texttt{VoteCommit}.
+  \item If not found (or DB error): replies \texttt{VoteAbort}.
+\end{enumerate}
+
+\subsection*{Required Print Output}
+
+\begin{lstlisting}[language={}]
+Phase decision of Node 1 sends RPC VoteRequest to Phase voting of Node 2
+Phase voting of Node 2 receives RPC VoteRequest from Phase decision of Node 1
+Phase voting of Node 2 sends RPC VoteCommit to Phase decision of Node 1
+\end{lstlisting}
+
+\subsection*{Screenshot — Vote Phase Output}
+
+\begin{figure}[H]
+  \centering
+  % \includegraphics[width=0.95\textwidth]{images/q1_vote_phase.png}
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
+    [Screenshot: \texttt{docker logs node2-api-server-a} showing VoteRequest
+    and VoteCommit prints for all 5 nodes]
+  \vspace{2.2cm}}}
+  \caption{Vote phase print output from the coordinator node (Node 1).}
+  \label{fig:q1}
+\end{figure}

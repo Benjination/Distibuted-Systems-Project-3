@@ -1,0 +1,61 @@
+\section{Q4 — Raft: Log Replication}
+
+\subsection*{Design}
+
+Log replication extends Q3 within the same \texttt{raft\_node.py} and
+\texttt{raft.proto}. Each node maintains a log of drug operations with
+committed and pending entries. Clients may connect to any node; non-leaders
+forward requests to the current leader.
+
+\subsection*{Replication Protocol}
+
+\begin{enumerate}
+  \item Client sends a drug operation (Add, UpdateStock, or Delete) to any node.
+  \item If the receiver is not the leader, it forwards the request to the known leader.
+  \item The leader appends \texttt{<operation, term, index>} to its log and
+        includes the full log (plus the current commit index \texttt{c}) in the
+        next \texttt{AppendEntries} RPC to all followers.
+  \item Each follower copies the log and ACKs. Each follower executes all
+        operations up to and including index \texttt{c}.
+  \item When the leader receives ACKs from a majority ($\geq 3$ of 5),
+        it executes all pending operations, increments \texttt{c}, and returns
+        the result to the client.
+\end{enumerate}
+
+\subsection*{Proto Extension}
+
+\begin{lstlisting}[language={}]
+message LogEntry {
+  int32  term      = 1;
+  string operation = 2;  // "add", "update", "delete"
+  int32  drug_id   = 3;
+  bytes  payload   = 4;  // serialized request proto
+}
+
+message AppendEntriesMsg {
+  int32           term           = 1;
+  int32           leader_id      = 2;
+  repeated LogEntry entries      = 3;
+  int32           commit_index   = 4;
+}
+\end{lstlisting}
+
+\subsection*{Required Print Output}
+
+\begin{lstlisting}[language={}]
+Node 2 sends RPC AppendEntries to Node 4
+Node 4 runs RPC AppendEntries called by Node 2
+\end{lstlisting}
+
+\subsection*{Screenshot — Log Replication}
+
+\begin{figure}[H]
+  \centering
+  % \includegraphics[width=0.95\textwidth]{images/q4_replication.png}
+  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.5cm}
+    [Screenshot: client sends UpdateStock to a follower node, follower forwards to leader,
+    leader sends AppendEntries with log entry to all followers, majority ACKs, DB updated]
+  \vspace{2.5cm}}}
+  \caption{Raft log replication: client operation committed after majority ACK, forwarding shown.}
+  \label{fig:q4}
+\end{figure}
