@@ -23,124 +23,113 @@ server.py is clean and straightforward — all RPCs are ~10 lines each.
 WHAT NEEDS TO BE BUILT
 ----------------------------------------------------------
 
-PART 1 — 2PC: VOTE PHASE (Q1)
+PART 1 — 2PC: VOTE PHASE (Q1)                                          [COMPLETE]
 ------------------------------
 Goal: Implement the "voting" half of two-phase commit for UpdateStock.
 
 Topology to create:
-  - Give each API server a clear role: one will be the Coordinator, others are Participants.
-  - Easiest approach: add a new "coordinator" container (could just be a 3rd API server
-    that has coordinator logic added), or promote api-server-a to coordinator permanently.
-  - Scale to at least 5 nodes: coordinator + 4 participant API servers works cleanly.
+  [x] Promoted api-server-a (NODE_ID=1) to coordinator permanently.
+  [x] Scaled to 5 nodes: api-server-a/b/c/d/e (NODE_IDs 1–5).
 
 What to add to pharmacy.proto:
-  - A new service (e.g., TwoPhaseCommitService) with RPCs for:
-      VoteRequest  (coordinator → participant)
-      VoteCommit   (participant → coordinator response: yes)
-      VoteAbort    (participant → coordinator response: no)
+  [x] Added TwoPhaseParticipantService with VoteRequest, GlobalCommit, GlobalAbort.
+  [x] Added CoordinatorService with UpdateStock2PC RPC.
+  [x] Added VoteRequestMsg, VoteResponseMsg, GlobalDecisionMsg, GlobalDecisionAck.
 
 What to add to server.py (or a new coordinator.py):
-  - Coordinator logic: on receiving an UpdateStock request, send VoteRequest to all
-    participants; collect votes; proceed to decision phase.
-  - Participant logic: on receiving VoteRequest, check if the operation is feasible
-    (e.g., enough stock, DB accessible), reply VoteCommit or VoteAbort.
+  [x] participant.py — VoteRequest checks DB, replies VoteCommit or VoteAbort.
+  [x] coordinator.py — sends VoteRequest to all 5 participants, collects votes.
+  [x] server.py — starts participant on port 50052 (all nodes); coordinator on
+      port 50053 (Node 1 only); GC bug fixed (coord_server = serve_coordinator()).
 
-Print statements required by the assignment on both client and server side for each RPC.
+Print statements required:
+  [x] "Phase decision of Node X sends RPC Y to Phase voting of Node Z"
+  [x] "Phase voting of Node Y sends RPC Z to Phase decision of Node X"
 
 docker-compose additions:
-  - Add 3 more api-server containers (c, d, e) to reach 5 participant nodes.
-  - Each just needs a NODE_ID env var to distinguish itself.
+  [x] api-server-c, d, e added (reuse node2_api_server/Dockerfile).
+  [x] NODE_ID env var set on all 5 containers.
+  [x] Port 50053 exposed on api-server-a for test clients.
+  [x] PYTHONUNBUFFERED=1 added to Dockerfile.
 
 
-PART 2 — 2PC: DECISION PHASE (Q2)
+PART 2 — 2PC: DECISION PHASE (Q2)                                      [COMPLETE]
 ----------------------------------
 Goal: Implement the "commit or abort" decision after votes are collected.
 
-Building on Part 1, add to pharmacy.proto:
-  - RPCs in the same TwoPhaseCommitService (or extended):
-      GlobalCommit  (coordinator → all participants if all voted yes)
-      GlobalAbort   (coordinator → all participants if any voted no)
+  [x] GlobalCommit RPC — coordinator → all participants if all voted yes.
+  [x] GlobalAbort RPC  — coordinator → all participants if any voted no.
 
-What to add to coordinator logic:
-  - After collecting all votes: if all are VoteCommit → send GlobalCommit to each,
-    and each participant actually executes the UPDATE in the DB.
-  - If any VoteAbort → send GlobalAbort to each, no DB writes happen.
+  [x] coordinator.py — collects votes, sends GlobalCommit or GlobalAbort.
+  [x] participant.py — on GlobalCommit: Node 1 executes the DB UPDATE
+      (avoids 5 duplicate writes on shared PostgreSQL); others log locally.
+      On GlobalAbort: all nodes discard pending tx, no DB writes.
 
-What to add to participant logic:
-  - On GlobalCommit: execute the local DB write (the actual UpdateStock SQL).
-  - On GlobalAbort: discard the pending transaction, log the abort.
+  [x] Two gRPC services on different ports satisfy the intra-container
+      gRPC requirement: PharmacyService (50051), ParticipantService (50052),
+      CoordinatorService (50053 — Node 1 only).
 
-The assignment requirement: voting phase and decision phase must communicate via gRPC
-even when running in the same container (they can be two gRPC services on different ports
-within one container, or split across separate processes).
-
-Print statements required on both sides for all new RPCs.
+  [x] Print statements verified for GlobalCommit and GlobalAbort paths.
+  [x] twopc_client.py created and tested — both happy path and abort path pass.
+  [x] Screenshots captured (Figures 1, 2, 3) for report.
 
 
-PART 3 — RAFT: LEADER ELECTION (Q3)
+PART 3 — RAFT: LEADER ELECTION (Q3)                                    [NOT STARTED]
 -------------------------------------
 Goal: Implement Raft leader election across 5 nodes.
 
-New proto file (e.g., raft.proto) with:
-  - RequestVote RPC  (candidate → other nodes)
-  - AppendEntries RPC (leader → followers, used as heartbeat when log is empty)
+  [ ] Create proto/raft.proto:
+        RequestVote(RequestVoteMsg) returns (RequestVoteReply)
+        AppendEntries(AppendEntriesMsg) returns (AppendEntriesReply)
 
-New file (e.g., raft_node.py) implementing:
-  - Node states: Follower, Candidate, Leader
-  - Heartbeat timeout: 1 second (all nodes)
-  - Election timeout: random in [1.5s, 3s] per node
-  - Startup: all nodes begin as Followers
-  - If no heartbeat received within election timeout → become Candidate, increment term,
-    vote for self, send RequestVote to all peers
-  - If majority votes received → become Leader, start sending AppendEntries heartbeats
-  - If another leader's heartbeat arrives → revert to Follower
+  [ ] Create node2_api_server/raft_node.py:
+        - States: Follower / Candidate / Leader
+        - Heartbeat interval: 1s (leader)
+        - Election timeout: random [1.5s, 3s] (follower/candidate)
+        - Vote grant condition: term >= current AND not yet voted this term
+        - Majority = 3 of 5 votes
 
-The 5 API server containers from Part 1 become the 5 Raft nodes. NODE_ID and peer
-addresses are passed in via environment variables so docker-compose controls the topology.
+  [ ] Wire into server.py — start RaftNode thread after existing gRPC servers.
 
-Print statements required per assignment format for RequestVote and AppendEntries.
+  [ ] Rebuild containers, verify election output in docker logs.
+
+  [ ] Capture screenshot for report Figure 4 (q3_election.png).
+
+Required print format:
+  "Node X sends RPC RequestVote to Node Y"
+  "Node X runs RPC RequestVote called by Node Y"
 
 
-PART 4 — RAFT: LOG REPLICATION (Q4)
+PART 4 — RAFT: LOG REPLICATION (Q4)                                    [NOT STARTED]
 -------------------------------------
 Goal: Any write operation (AddDrug, UpdateStock, DeleteDrug) goes through the Raft log.
 
-Extend raft.proto with:
-  - AppendEntries updated to carry log entries (not just heartbeat)
-  - A ClientRequest RPC so clients can send ops to any node (non-leaders forward to leader)
+  [ ] Extend raft.proto:
+        AppendEntriesMsg gains repeated LogEntry entries field.
+        LogEntry: term, operation, drug_id, payload.
 
-Each node maintains:
-  - A log list: entries of the form (operation, term, index)
-  - A commit index (c): highest log entry known to be committed
-  - Pending (uncommitted) entries above c
+  [ ] Extend raft_node.py:
+        - Leader appends entry to log, sends via AppendEntries to all followers.
+        - Wait for majority ACKs (≥3), then commit and execute DB write.
+        - Non-leader: forward client request to known leader.
 
-Flow for a write:
-  1. Client sends request to any node
-  2. If not leader → forward to current leader
-  3. Leader appends entry to log, sends full log + current commit index to all followers
-     on next heartbeat (AppendEntries)
-  4. Followers copy log, send ACK back, execute all ops up to commit index
-  5. When leader receives majority ACKs → execute pending ops, return result to client,
-     increment commit index
+  [ ] Write client/raft_test_client.py to exercise log replication.
 
-Print statements required per assignment format.
+  [ ] Capture screenshot for report Figure 5 (q4_replication.png).
 
 
-PART 5 — RAFT FAILURE TEST CASES (Q5)
+PART 5 — RAFT FAILURE TEST CASES (Q5)                                  [NOT STARTED]
 ---------------------------------------
 Goal: Design and run 5 failure-related test scenarios. Document each with screenshots.
 
-Suggested test cases (these are loose — refine when implementing):
-  1. Leader crash mid-election — kill the current leader container; verify a new one
-     is elected within election timeout.
-  2. Follower crash and rejoin — kill one follower, let the cluster keep running,
-     restart the follower and verify it catches up the log.
-  3. Slow network / delayed heartbeat — use Docker network tools to add latency on
-     one node's interface; verify it triggers election timeout and re-election.
-  4. Split vote (simultaneous candidates) — configure two nodes with the same election
-     timeout so they both call an election at once; verify the protocol resolves correctly.
-  5. New node joining — add a 6th container to a running 5-node cluster; verify it
-     receives the full log, catches up, and participates in future elections.
+Final test cases (defined in report/sections/q5.tex):
+  [ ] Test 1: Leader crash → re-election (docker stop current leader; verify new leader)
+  [ ] Test 2: Single follower crash → majority retained (4/5 still works)
+  [ ] Test 3: Two followers crash → 3/5 majority still works
+  [ ] Test 4: Three nodes down → majority lost, system stalls (no commits)
+  [ ] Test 5: 2PC with participant down → transaction aborts
+
+  Each test needs a screenshot saved to report/images/q5_testN.png.
 
 
 ----------------------------------------------------------
@@ -149,47 +138,47 @@ FILE / DIRECTORY CHANGES EXPECTED
 
 pharmacy_system/
   proto/
-    pharmacy.proto       — extend with 2PC service + messages (Parts 1 & 2)
-    raft.proto           — new file for Raft RPCs (Parts 3 & 4)
-    (regenerate pb2 files after each proto change)
+    [x] pharmacy.proto       — extended with 2PC services + messages
+    [ ] raft.proto           — NOT YET CREATED (Parts 3 & 4)
+    [x] pharmacy_pb2.py / pharmacy_pb2_grpc.py — regenerated
 
   node2_api_server/
-    server.py            — add participant-side 2PC logic
-    coordinator.py       — new: coordinator 2PC logic (or fold into server.py)
-    raft_node.py         — new: Raft state machine + election + log replication
+    [x] server.py            — updated: starts participant (all nodes) + coordinator (Node 1)
+    [x] coordinator.py       — new: coordinator 2PC logic
+    [x] participant.py       — new: participant 2PC logic
+    [ ] raft_node.py         — NOT YET CREATED (Parts 3 & 4)
 
-  docker-compose.yml     — add api-server-c, d, e; add NODE_ID and peer env vars;
-                           keep NGINX and DB nodes as-is
+  [x] docker-compose.yml     — api-server-c/d/e added; NODE_IDs set; port 50053 exposed
+  [x] node2_api_server/Dockerfile — PYTHONUNBUFFERED=1 added; ports 50052/50053 exposed
 
   client/
-    test_client.py       — extend to test 2PC flow and send ops through Raft leader
+    [x] test_client.py       — original, unchanged
+    [x] twopc_client.py      — new: tests 2PC happy path and abort path
+    [ ] raft_test_client.py  — NOT YET CREATED (needed for Q3/Q4 testing)
+
+  LaTex/report/              — full report scaffold created, screenshots for Q1/Q2 captured
 
 
 ----------------------------------------------------------
 ORDER OF ATTACK
 ----------------------------------------------------------
 
-1. Get familiar — run the existing project with docker-compose up, send a few test
-   requests with test_client.py, make sure everything works before touching anything.
+[x] 1. Get familiar — ran existing project, tested with test_client.py.
 
-2. Scale to 5 nodes — update docker-compose.yml to add api-server-c, d, e with NODE_ID
-   env vars. Confirm all 5 start cleanly.
+[x] 2. Scale to 5 nodes — api-server-c/d/e added with NODE_IDs 1–5.
 
-3. Implement 2PC vote phase (Q1) — extend proto, add VoteRequest/VoteCommit/VoteAbort
-   logic, add required print statements, test with docker-compose.
+[x] 3. Implement 2PC vote phase (Q1) — COMPLETE. Verified with twopc_client.py.
 
-4. Implement 2PC decision phase (Q2) — add GlobalCommit/GlobalAbort, wire coordinator
-   to actually commit or abort based on collected votes.
+[x] 4. Implement 2PC decision phase (Q2) — COMPLETE. Commit and abort paths verified.
 
-5. Implement Raft leader election (Q3) — write raft.proto + raft_node.py, integrate
-   into the same containers, verify a leader is elected within a few seconds of startup.
+[ ] 5. Implement Raft leader election (Q3) — NOT STARTED.
+        Next: create proto/raft.proto then node2_api_server/raft_node.py.
 
-6. Implement Raft log replication (Q4) — extend AppendEntries to carry log, implement
-   request forwarding, test that writes from a non-leader still go through.
+[ ] 6. Implement Raft log replication (Q4) — NOT STARTED. Depends on step 5.
 
-7. Failure tests (Q5) — run each scenario, capture screenshots/logs for the report.
+[ ] 7. Failure tests (Q5) — NOT STARTED. Depends on Raft being running.
 
-8. Clean up, write README, write report.
+[ ] 8. Clean up, write README, fill in report macros, compile final PDF.
 
 ----------------------------------------------------------
 END OF INITIAL PLAN

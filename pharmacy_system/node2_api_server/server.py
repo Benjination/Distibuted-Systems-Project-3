@@ -18,6 +18,7 @@ import grpc
 from concurrent import futures
 import time
 import os
+import threading
 import psycopg2
 import psycopg2.pool
 import sys
@@ -192,6 +193,14 @@ def serve():
     if NODE_ID == 1:
         from coordinator import serve_coordinator
         coord_server = serve_coordinator()  # [PROJECT 3] keep reference alive; GC would stop it otherwise
+
+    # [PROJECT 3] RaftService on port 50054 — runs on all 5 nodes.
+    # Handles RequestVote and AppendEntries for Raft leader election (Q3).
+    from raft_node import raftNode, serve_raft
+    raft = raftNode()
+    raft_server = serve_raft(raft)  # keep reference alive
+    threading.Thread(target=raft.run, daemon=True).start()
+    print(f"[PROJECT 3] RaftService started on port 50054 (Node {NODE_ID})")
 
     pharmacy_server.wait_for_termination()
 

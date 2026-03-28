@@ -1,6 +1,6 @@
 # 💊 Distributed Pharmacy Inventory Management System
 
-**CSE-5306 Distributed Systems — Project 2**
+**CSE-5306 Distributed Systems — Project 3**
 
 ## System Overview
 
@@ -51,7 +51,7 @@ PostgreSQL DB                     (internal)
 ## Quick Start
 
 ### Prerequisites
-- Docker Desktop
+- Docker Desktop (must be running)
 - Python 3.10+
 - Git
 
@@ -63,44 +63,82 @@ cd pharmacy_system
 pip install -r requirements.txt
 ```
 
-### Step 2 — Generate gRPC Proto Code
+### Step 2 — Start All Services
+
+Proto compilation happens automatically inside Docker at build time (no local `generate_proto.sh` needed).
 
 ```bash
-chmod +x generate_proto.sh
-./generate_proto.sh
-```
-
-### Step 3 — Start All Services
-
-```bash
+cd pharmacy_system
 docker-compose up --build -d
 ```
 
 Wait ~15 seconds for all services to initialize.
 
-### Step 4 — Verify Services Running
+### Step 3 — Verify Services Running
 
 ```bash
 docker ps
 ```
 
-You should see 8 containers running:
+You should see these containers running:
 - `node1-nginx-lb`
 - `node2-api-server-a`
 - `node3-api-server-b`
+- `node7-api-server-c`
+- `node8-api-server-d`
+- `node9-api-server-e`
 - `node4-db-primary`
 - `node5-db-replica`
 - `node6-pgadmin`
 - `monolith-rest-api`
 - `mono-db`
 
-### Step 5 — Run Test Client (gRPC)
+### Step 4 — Run Test Client (gRPC / 2PC)
 
 ```bash
 python client/test_client.py
 ```
 
-### Step 6 — Test REST Monolith
+### Step 5 — Run 2PC Client
+
+```bash
+python client/twopc_client.py
+```
+
+### Step 6 — Observe Raft Leader Election
+
+Leader election starts automatically on boot. Check logs to see election and heartbeats:
+
+```bash
+# See which node won the election and its heartbeat output
+docker logs node2-api-server-a
+
+# See a follower acknowledging RPCs
+docker logs node3-api-server-b
+
+# Follow live output from all 5 API nodes at once
+docker-compose logs -f api-server-a api-server-b api-server-c api-server-d api-server-e
+```
+
+Expected output on the leader node (e.g. Node 1):
+```
+[PROJECT 3] RaftService started on port 50054 (Node 1)
+[RAFT] Node 1 timeout → CANDIDATE
+[RAFT] Node 1 becomes LEADER
+Node 1 sends RPC AppendEntries to Node 2
+Node 1 sends RPC AppendEntries to Node 3
+...
+```
+
+Expected output on a follower node (e.g. Node 2):
+```
+[PROJECT 3] RaftService started on port 50054 (Node 2)
+Node 2 runs RPC RequestVote called by Node 1
+Node 2 runs RPC AppendEntries called by Node 1
+...
+```
+
+### Step 7 — Test REST Monolith
 
 ```bash
 # Add a drug
@@ -115,7 +153,7 @@ curl http://localhost:9000/drugs
 curl http://localhost:9000/drugs/alert/low-stock?threshold=100
 ```
 
-### Step 7 — Run Performance Benchmark
+### Step 8 — Run Performance Benchmark
 
 ```bash
 cd evaluation
@@ -123,7 +161,7 @@ python benchmark.py
 python plot_results.py
 ```
 
-### Step 8 — View pgAdmin Dashboard (Node 6)
+### Step 9 — View pgAdmin Dashboard (Node 6)
 
 Open http://localhost:5050
 - Email: `admin@pharmacy.com`
