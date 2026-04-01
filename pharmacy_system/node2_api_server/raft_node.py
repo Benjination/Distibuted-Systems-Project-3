@@ -141,6 +141,7 @@ class raftNode(raft_pb2_grpc.RaftServicer):
                 self.last_applied += 1
                 entry = self.log[self.last_applied]
                 print(f"[APPLY] Node {NODE_ID} executes: {entry.command}")
+                self.apply_entry_to_db(entry.command)
 
             self.commit_index = request.commit_index
 
@@ -307,6 +308,10 @@ class raftNode(raft_pb2_grpc.RaftServicer):
 
             entry = self.log[self.commit_index]
             print(f"[COMMIT] Node {NODE_ID} commits: {entry.command}")
+            
+            # Leader must also apply the committed entry to its own database
+            self.last_applied = self.commit_index
+            self.apply_entry_to_db(entry.command)
 
             return raft_pb2.ClientResponse(
             success = True,
@@ -319,8 +324,15 @@ class raftNode(raft_pb2_grpc.RaftServicer):
         )
     
     def apply_entry_to_db(self, command):
+        """Apply a committed log entry to the local database."""
         try:
             parts = command.split(":")
+            
+            # Validate command format
+            if len(parts) < 3:
+                print(f"[DB ERROR] Node {NODE_ID}: Invalid command format: {command}")
+                return
+            
             if parts[0] == "UPDATE":
                 drug_id = int(parts[1])
                 new_qty = int(parts[2])
@@ -332,14 +344,16 @@ class raftNode(raft_pb2_grpc.RaftServicer):
                     "UPDATE drugs SET quantity = %s WHERE id = %s",
                     (new_qty, drug_id)
                 )
-
+                
+                rows_affected = cur.rowcount
                 conn.commit()
                 cur.close()
                 conn.close()
 
-                
-
-                print(f"[DB] Node {NODE_ID} updated drug {drug_id} → {new_qty}")
+                if rows_affected > 0:
+                    print(f"[DB] Node {NODE_ID} updated drug {drug_id} → {new_qty}")
+                else:
+                    print(f"[DB WARNING] Node {NODE_ID}: Drug {drug_id} not found")
 
         except Exception as e:
             print(f"[DB ERROR] Node {NODE_ID}: {e}")
