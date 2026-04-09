@@ -7,6 +7,8 @@ throughout this project. Its usage included:
   \item Scaffolding the initial proto file extensions for 2PC and Raft service definitions.
   \item Generating boilerplate for the gRPC servicer classes (\texttt{participant.py},
         \texttt{coordinator.py}) which were then reviewed, understood, and adapted.
+  \item Assisting with the initial Raft consensus algorithm design and implementation strategy.
+  \item Troubleshooting Raft leader election timing issues and log replication edge cases.
   \item Diagnosing a runtime bug where the \texttt{CoordinatorService} gRPC server
         object was garbage-collected immediately after creation because its return
         value was not assigned to a variable.

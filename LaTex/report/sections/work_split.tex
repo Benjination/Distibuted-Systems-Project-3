@@ -1,24 +1,19 @@
 \section{Work Division}
 
+This record reflects the final division of labor for the report.
+\textbf{\StudentB} completed the Two-Phase Commit work for Q1 and Q2 and also
+handled the LaTeX report writing/organization. \textbf{\StudentA} completed all
+Raft work for Q3 and Q4 independently.
+
 \begin{center}
-\begin{tabular}{lll}
+\begin{tabular}{p{0.56\textwidth}ll}
   \toprule
-  Task & Owner & Status \\
+  Area & Owner & Status \\
   \midrule
-  Environment setup, Docker scaling (5 nodes) & \StudentA & Complete \\
-  \texttt{pharmacy.proto} 2PC extensions       & \StudentA & Complete \\
-  \texttt{participant.py} (Q1 + Q2)            & \StudentA & Complete \\
-  \texttt{coordinator.py} (Q1 + Q2)            & \StudentA & Complete \\
-  \texttt{server.py} 2PC wiring                & \StudentA & Complete \\
-  \texttt{twopc\_client.py}                    & \StudentA & Complete \\
-  \texttt{raft.proto}                          & \StudentA & \\
-  \texttt{raft\_node.py} — leader election (Q3) & \StudentA & \\
-  \texttt{raft\_node.py} — log replication (Q4) & \StudentA & \\
-  \texttt{server.py} Raft wiring               & \StudentA & \\
-  \texttt{raft\_test\_client.py}               & \StudentB & \\
-  Q5 failure test scripts                      & \StudentB & \\
-  \texttt{README.md}                           & \StudentB & \\
-  Report                                       & \StudentB & \\
+  Q1 + Q2 — Two-Phase Commit design, implementation, and testing & \StudentB & Complete \\
+  Q3 + Q4 — all Raft work (\texttt{raft.proto}, \texttt{raft\_node.py}, Raft wiring, validation) & \StudentA & Complete \\
+  LaTeX report writing, organization, and final write-up & Shared & Complete \\
+  Q5 — failure scenario runs and screenshots & Shared & Complete \\
   \bottomrule
 \end{tabular}
 \end{center}

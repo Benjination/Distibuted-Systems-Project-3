@@ -29,11 +29,28 @@ All nodes start as \textbf{Follower}. The election cycle is:
 \subsection*{Proto Definition}
 
 \begin{lstlisting}[language={}]
-service RaftService {
-  rpc RequestVote(RequestVoteMsg)     returns (RequestVoteReply);
-  rpc AppendEntries(AppendEntriesMsg) returns (AppendEntriesReply);
+service Raft {
+  rpc RequestVote(RequestVoteRequest) returns (RequestVoteResponse);
+  rpc AppendEntries(AppendEntriesRequest) returns (AppendEntriesResponse);
+  rpc ClientCommand(ClientRequest) returns (ClientResponse);
 }
 \end{lstlisting}
+
+\subsection*{Live Verification}
+
+During the Apr. 8 validation run, Node 2 won the election and immediately
+started sending heartbeats to the rest of the cluster:
+
+\begin{lstlisting}[language={}]
+[RAFT] Node 2 timeout → CANDIDATE
+Node 2 sends RPC RequestVote to Node 1
+[RAFT] Node 2 becomes LEADER
+Node 1 runs RPC AppendEntries called by Node 2
+\end{lstlisting}
+
+This confirms that the Q3 leader-election logic is functioning on the running
+5-node Docker cluster. Figure~\ref{fig:q3} shows the corresponding election
+output captured from the live demo.
 
 \subsection*{Required Print Output}
 
@@ -48,11 +65,7 @@ Node 4 runs RPC AppendEntries called by Node 2
 
 \begin{figure}[H]
   \centering
-  % \includegraphics[width=0.95\textwidth]{images/q3_election.png}
-  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.5cm}
-    [Screenshot: logs showing a node timing out, sending RequestVote to all peers,
-    receiving majority votes, transitioning to Leader, and sending AppendEntries heartbeats]
-  \vspace{2.5cm}}}
-  \caption{Raft leader election: Node X wins election in term T and begins sending heartbeats.}
+  \includegraphics[width=0.95\textwidth]{images/q3_election.png}
+  \caption{Raft leader election logs showing nodes timing out, sending RequestVote RPCs, and becoming leader after receiving a majority of votes.}
   \label{fig:q3}
 \end{figure}

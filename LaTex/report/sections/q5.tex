@@ -1,117 +1,109 @@
 \section{Q5 — Raft Failure Test Cases}
 
-Five failure scenarios are scripted in \texttt{client/q5\_failure\_tests.py}.
-Each test stops or disrupts one or more containers, observes system behavior,
-then restores normal operation.
+To evaluate fault tolerance in our Raft implementation, we performed five
+failure-oriented tests while monitoring the live cluster logs. We used
+\texttt{docker compose stop/start} to control individual nodes and filtered
+logs using \texttt{grep} to focus on election, leader, and commit events.
+These tests focus on node departure, node return, leader failure, leader
+recovery, and the quorum rule for a 5-node cluster.
+
+\textbf{Commands used:}
+\begin{verbatim}
+docker compose logs -f api-server-a api-server-b api-server-c \
+  api-server-d api-server-e \
+  | grep -E "RAFT|CANDIDATE|LEADER|RequestVote|lost majority|\
+            isolated|failed|unreachable|COMMIT|APPLY|Stopping|\
+            Restarting"
+
+docker compose stop <node-name>
+docker compose start <node-name>
+\end{verbatim}
 
 % ── Test Case 1 ──────────────────────────────────────────
-\subsection*{Test Case 1 — Leader Crash}
+\subsection*{Test Case 1 — Non-Leader Node Exits}
 
-\textbf{Setup:} Identify the current leader from logs, then stop that container.
+\textbf{Setup:} Stop one follower using \texttt{docker compose stop api-server-<X>}.
 
-\textbf{Expected behavior:} The remaining 4 nodes stop receiving heartbeats.
-After their election timeouts expire (1.5–3s), one node initiates an election
-and a new leader is elected. Operations resume once a new leader is established.
-
-\textbf{Commands:}
-\begin{lstlisting}[language=bash]
-docker stop node2-api-server-a   # (or whichever node is leader)
-# observe re-election in remaining nodes
-docker start node2-api-server-a
-\end{lstlisting}
+\textbf{Expected behavior:} Because 4 of the 5 nodes remain alive, the leader
+keeps control of the cluster and Raft continues to make progress. No re-election
+is required because the failed node is not the leader.
 
 \begin{figure}[H]
   \centering
-  % \includegraphics[width=0.95\textwidth]{images/q5_test1_leader_crash.png}
-  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
-    [Screenshot: leader node stopped, election timeout fires on another node,
-    new leader elected, heartbeats resume from new leader]
-  \vspace{2.2cm}}}
-  \caption{Test 1: Leader crash triggers re-election among the remaining 4 nodes.}
+  \includegraphics[width=0.95\textwidth]{images/followerFail.png}
+  \caption{Test 1: A non-leader node exits the cluster while the remaining nodes continue operating normally.}
   \label{fig:q5_t1}
 \end{figure}
 
 % ── Test Case 2 ──────────────────────────────────────────
-\subsection*{Test Case 2 — Single Follower Crash}
+\subsection*{Test Case 2 — Non-Leader Node Rejoins}
 
-\textbf{Setup:} Stop one follower while the system is operational.
+\textbf{Setup:} Restart the stopped follower using \texttt{docker compose start api-server-<X>}.
 
-\textbf{Expected behavior:} The cluster retains a majority (4 of 5 nodes).
-Log replication continues; the leader commits operations with ACKs from the
-remaining 4 followers. The stopped node re-syncs its log when restarted.
+\textbf{Expected behavior:} The returning node resumes participation as a
+follower, receives heartbeats / log updates from the leader, and re-enters the
+cluster without forcing a new election.
 
 \begin{figure}[H]
   \centering
-  % \includegraphics[width=0.95\textwidth]{images/q5_test2_follower_crash.png}
-  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
-    [Screenshot: one follower stopped, client operation still succeeds,
-    log replication prints show only 4 ACKs, majority still met]
-  \vspace{2.2cm}}}
-  \caption{Test 2: Single follower crash — majority intact, operations continue.}
+  \includegraphics[width=0.95\textwidth]{images/followerReturn.png}
+  \caption{Test 2: A previously stopped follower rejoins the Raft cluster and resumes normal operation.}
   \label{fig:q5_t2}
 \end{figure}
 
 % ── Test Case 3 ──────────────────────────────────────────
-\subsection*{Test Case 3 — Two Followers Crash (Majority Retained)}
+\subsection*{Test Case 3 — Leader Failure}
 
-\textbf{Setup:} Stop two follower nodes simultaneously.
+\textbf{Setup:} Identify the current leader from the logs, then stop it using
+\texttt{docker compose stop <leader-node>}.
 
-\textbf{Expected behavior:} 3 of 5 nodes remain — exactly a majority.
-The leader can still reach consensus and commit operations. This is the
-minimum viable cluster for the 5-node configuration.
+\textbf{Expected behavior:} Once heartbeats from the leader disappear, one of
+the remaining nodes times out, becomes a candidate, sends \texttt{RequestVote}
+RPCs, and is elected as the new leader by a majority of the cluster.
 
 \begin{figure}[H]
   \centering
-  % \includegraphics[width=0.95\textwidth]{images/q5_test3_two_followers.png}
-  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
-    [Screenshot: two followers stopped, client operation succeeds, leader commits
-    after receiving 3/5 ACKs (leader + 2 remaining followers)]
-  \vspace{2.2cm}}}
-  \caption{Test 3: Two followers crash — 3-node majority still allows commits.}
+  \includegraphics[width=0.95\textwidth]{images/leaderFail.png}
+  \caption{Test 3: When the leader fails, the remaining nodes hold a new election and choose a replacement leader.}
   \label{fig:q5_t3}
 \end{figure}
 
 % ── Test Case 4 ──────────────────────────────────────────
-\subsection*{Test Case 4 — Majority Lost (System Stalls)}
+\subsection*{Test Case 4 — Old Leader Rejoins After Failure}
 
-\textbf{Setup:} Stop three nodes, breaking the majority threshold.
+\textbf{Setup:} Restart the previously failed leader using
+\texttt{docker compose start <leader-node>}.
 
-\textbf{Expected behavior:} The remaining 2 nodes cannot form a majority.
-If the leader is among the 2 survivors, it will not commit any new operations
-(cannot reach 3 ACKs). If a candidate election fires, it also cannot win.
-The system stalls until nodes are restored.
+\textbf{Expected behavior:} The old leader does not immediately reclaim
+leadership. Instead, it rejoins as a follower and begins receiving heartbeats
+from the node that won the new election.
 
 \begin{figure}[H]
   \centering
-  % \includegraphics[width=0.95\textwidth]{images/q5_test4_no_majority.png}
-  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
-    [Screenshot: 3 nodes stopped, client request times out or hangs,
-    logs show leader cannot gather majority ACKs, no commit occurs;
-    nodes restored and normal operation resumes]
-  \vspace{2.2cm}}}
-  \caption{Test 4: Three nodes stopped — majority lost, system stalls until restored.}
+  \includegraphics[width=0.95\textwidth]{images/leaderReturn.png}
+  \caption{Test 4: The failed leader rejoins the cluster and returns as a follower under the new leader.}
   \label{fig:q5_t4}
 \end{figure}
 
 % ── Test Case 5 ──────────────────────────────────────────
-\subsection*{Test Case 5 — 2PC with Participant Down}
+\subsection*{Test Case 5 — Quorum Rule Demonstration (2 Failures vs. 3 Failures)}
 
-\textbf{Setup:} Stop one API server, then trigger a \texttt{UpdateStock2PC}
-transaction via \texttt{twopc\_client.py}.
+\textbf{Setup:} Stop two follower nodes using \texttt{docker compose stop}, observe
+the cluster continuing to operate, then stop a third node.
 
-\textbf{Expected behavior:} The coordinator sends \texttt{VoteRequest} to all
-5 participants. The stopped node is unreachable; the coordinator treats an
-unreachable node as an implicit \texttt{VoteAbort}. \texttt{GlobalAbort} is
-sent to all reachable participants and the transaction is rolled back.
+\textbf{Expected behavior:}
+\begin{itemize}
+  \item With \textbf{2 failed nodes}, the cluster still has \textbf{3/5} nodes alive, which is a majority, so Raft can still commit operations.
+  \item With \textbf{3 failed nodes}, only \textbf{2/5} nodes remain, which is not a majority, so the cluster loses quorum and can no longer safely make progress.
+\end{itemize}
+
+This test directly demonstrates the \(2k+1\) property of a 5-node Raft system:
+it tolerates up to 2 failures, but not 3.
 
 \begin{figure}[H]
   \centering
-  % \includegraphics[width=0.95\textwidth]{images/q5_test5_2pc_participant_down.png}
-  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.2cm}
-    [Screenshot: one participant container stopped, coordinator logs show
-    unreachable node treated as ABORT vote, GlobalAbort broadcast, client
-    receives \texttt{success=False}]
-  \vspace{2.2cm}}}
-  \caption{Test 5: 2PC transaction aborts when one participant is unreachable.}
+  \includegraphics[width=0.48\textwidth]{images/twoFails.png}\hfill
+  \includegraphics[width=0.48\textwidth]{images/threeFails.png}
+  \caption{Test 5: Quorum rule demonstration. Left: with two failed nodes, the remaining 3/5 nodes still form a majority and Raft continues. Right: with three failed nodes, quorum is lost and the cluster stalls.}
   \label{fig:q5_t5}
 \end{figure}

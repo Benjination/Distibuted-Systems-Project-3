@@ -3,42 +3,63 @@
 \subsection*{Design}
 
 Log replication extends Q3 within the same \texttt{raft\_node.py} and
-\texttt{raft.proto}. Each node maintains a log of drug operations with
-committed and pending entries. Clients may connect to any node; non-leaders
-forward requests to the current leader.
+\texttt{raft.proto}. The current implementation represents client operations
+as command strings such as \texttt{UPDATE:1:333}. Each leader appends the
+command to its local log, replicates the full log to all followers, waits for a
+majority ACK, then commits the entry and applies it to the database.
+
+Clients may connect to any node. If the receiver is not the leader, it forwards
+the request to the current leader using the \texttt{ClientCommand} RPC.
 
 \subsection*{Replication Protocol}
 
 \begin{enumerate}
-  \item Client sends a drug operation (Add, UpdateStock, or Delete) to any node.
+  \item Client sends an \texttt{UPDATE} command to any node.
   \item If the receiver is not the leader, it forwards the request to the known leader.
-  \item The leader appends \texttt{<operation, term, index>} to its log and
-        includes the full log (plus the current commit index \texttt{c}) in the
-        next \texttt{AppendEntries} RPC to all followers.
-  \item Each follower copies the log and ACKs. Each follower executes all
-        operations up to and including index \texttt{c}.
-  \item When the leader receives ACKs from a majority ($\geq 3$ of 5),
-        it executes all pending operations, increments \texttt{c}, and returns
-        the result to the client.
+  \item The leader appends \texttt{<term, index, command>} to its log and sends
+        the current full log plus \texttt{commit\_index} in \texttt{AppendEntries}.
+  \item Each follower copies the leader's log and applies all entries up to the
+        committed index.
+  \item When the leader receives ACKs from a majority ($\geq 3$ of 5), it marks
+        the entry committed, applies the DB update, and returns success.
 \end{enumerate}
 
 \subsection*{Proto Extension}
 
 \begin{lstlisting}[language={}]
 message LogEntry {
-  int32  term      = 1;
-  string operation = 2;  // "add", "update", "delete"
-  int32  drug_id   = 3;
-  bytes  payload   = 4;  // serialized request proto
+  int32 term = 1;
+  int32 index = 2;
+  string command = 3;
 }
 
-message AppendEntriesMsg {
-  int32           term           = 1;
-  int32           leader_id      = 2;
-  repeated LogEntry entries      = 3;
-  int32           commit_index   = 4;
+message AppendEntriesRequest {
+  int32 term = 1;
+  int32 leader_id = 2;
+  repeated LogEntry log = 3;
+  int32 commit_index = 4;
 }
 \end{lstlisting}
+
+\subsection*{Live Verification}
+
+On Apr. 8 we sent \texttt{UPDATE:1:333} to a follower node. The follower
+forwarded the request to leader Node 2, Node 2 committed the entry, and the
+row in PostgreSQL changed to quantity 333:
+
+\begin{lstlisting}[language={}]
+Node 1 forwards request to Node 2
+[LOG] Node 2 appended: UPDATE:1:333
+[COMMIT] Node 2 commits: UPDATE:1:333
+[APPLY] Node 3 executes: UPDATE:1:333
+[DB] Node 3 updated drug 1 → 333
+SELECT id, name, quantity FROM drugs WHERE id=1;
+ id | Aspirin | 333
+\end{lstlisting}
+
+This confirms the core Q4 workflow: follower-to-leader forwarding, majority
+acknowledgment, and committed application of the replicated update. Figure~\ref{fig:q4}
+shows the corresponding log-replication output from the live run.
 
 \subsection*{Required Print Output}
 
@@ -51,11 +72,7 @@ Node 4 runs RPC AppendEntries called by Node 2
 
 \begin{figure}[H]
   \centering
-  % \includegraphics[width=0.95\textwidth]{images/q4_replication.png}
-  \fbox{\parbox{0.9\textwidth}{\centering\vspace{2.5cm}
-    [Screenshot: client sends UpdateStock to a follower node, follower forwards to leader,
-    leader sends AppendEntries with log entry to all followers, majority ACKs, DB updated]
-  \vspace{2.5cm}}}
-  \caption{Raft log replication: client operation committed after majority ACK, forwarding shown.}
+  \includegraphics[width=0.95\textwidth]{images/q4_replication.png}
+  \caption{Raft log replication output showing follower forwarding, leader commit, follower apply, and database update after majority acknowledgment.}
   \label{fig:q4}
 \end{figure}
