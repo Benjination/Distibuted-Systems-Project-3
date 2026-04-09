@@ -1,0 +1,1 @@
+docker exec node2-api-server-a python3 -c "import grpc,sys;sys.path.insert(0,'/app/proto');import pharmacy_pb2 as pb,pharmacy_pb2_grpc as rpc;s=rpc.CoordinatorServiceStub(grpc.insecure_channel('localhost:50053'));r=s.UpdateStock2PC(pb.UpdateStockRequest(id=3,quantity=250));print(r.message)"

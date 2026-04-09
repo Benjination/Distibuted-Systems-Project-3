@@ -30,33 +30,54 @@ This project extends a distributed pharmacy inventory system with:
 
 ### Prerequisites
 - Docker Desktop (running)
-- Python 3.10+
 
-### 1. Setup
-
-```bash
-git clone https://github.com/Benjination/Distibuted-Systems-Project-3.git
-cd pharmacy_system
-pip install -r requirements.txt
-```
-
-### 2. Start Services
+### 1. Start Services
 
 Proto compilation happens automatically inside Docker containers at build time.
 
 ```bash
+git clone https://github.com/Benjination/Distibuted-Systems-Project-3.git
+cd Project3/pharmacy_system
 docker-compose up --build -d
 ```
 
 Wait ~15 seconds for initialization. Verify with `docker ps` (should see 11 containers running).
 
-### 3. Test Two-Phase Commit
+### 2. Demonstrate Two-Phase Commit (Interactive)
 
+Use **two terminals** for live demonstration:
+
+#### Terminal 1: Start Live 2PC Log Monitor
 ```bash
-python client/twopc_client.py
+cd pharmacy_system
+docker compose logs -f api-server-a api-server-b api-server-c api-server-d api-server-e \
+  | grep -E "2PC|VOTE|COMMIT|ABORT|Phase"
 ```
 
-### 4. Observe Raft Leader Election
+#### Terminal 2: Trigger Transactions
+
+View available drugs:
+```bash
+docker exec node4-db-primary psql -U postgres -d pharmacy -c "SELECT id, name FROM drugs;"
+```
+
+**Trigger 2PC Transactions:**
+
+```bash
+# Demonstrate COMMIT: Updates drug id=3 with quantity=250 (existing drug)
+./triggerCommit.sh
+
+# Demonstrate ABORT: Attempts to update drug id=9999 (non-existent drug)
+./triggerAbort.sh
+```
+
+**What these scripts do:**
+- Both scripts execute a gRPC call to the CoordinatorService on Node 1 (api-server-a) using the `UpdateStock2PC` RPC
+- `triggerCommit.sh` uses an existing drug ID (3), causing all participants to vote YES → coordinator commits
+- `triggerAbort.sh` uses a non-existent drug ID (9999), causing participants to vote NO → coordinator aborts
+- Watch Terminal 1 to see the complete 2PC protocol execution with PREPARE → VOTE → COMMIT/ABORT phases logged from coordinator.py and participant.py
+
+### 3. Observe Raft Leader Election
 
 ```bash
 docker logs node2-api-server-a | grep RAFT
@@ -70,7 +91,7 @@ Node 1 sends RPC AppendEntries to Node 2
 ...
 ```
 
-### 5. Run Raft Failure Tests
+### 4. Run Raft Failure Tests
 
 Filter logs to see elections without heartbeat spam:
 ```bash
@@ -98,7 +119,7 @@ docker compose stop api-server-c               # Quorum lost
 docker compose start api-server-c api-server-d api-server-e  # Recover
 ```
 
-### 6. Shutdown
+### 5. Shutdown
 
 ```bash
 docker-compose down -v
